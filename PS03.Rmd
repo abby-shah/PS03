@@ -1,6 +1,6 @@
 ---
 title: "STAT/MATH 495: Problem Set 03"
-author: "WRITE YOUR NAME HERE"
+author: "Syed Abbas Shah"
 date: "2017-09-26"
 output:
   html_document:
@@ -13,15 +13,18 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, fig.width=8, fig.height=4.5)
-
 # Load packages
 library(tidyverse)
+library(mosaic)
+library(reshape2)
+library(caret)
 data1 <- read_csv("data/data1.csv")
 data2 <- read_csv("data/data2.csv")
 ```
 
 
 # Question
+
 
 For both `data1` and `data2` tibbles (a tibble is a data frame with some
 [metadata](https://blog.rstudio.com/2016/03/24/tibble-1-0-0#tibbles-vs-data-frames) attached):
@@ -32,13 +35,214 @@ For both `data1` and `data2` tibbles (a tibble is a data frame with some
 * Give your estimate $\widehat{\sigma}$ of $\sigma$ where the noise component $\epsilon_i$ is distributed with mean 0 and standard deviation $\sigma$.
 
 
+
+#General Strategy:
+
+My strategy to approach these datasets will involve the following:
+
+1) I will explore the datasets to visualize the relationship between the variables involved. Since there are only 2 substantive variables in these tibbles, it becomes easier as there is no choice. I will figure out effective ways to demonstrate the relationship.
+
+2) I will fit a Spline Model to the entire dataset and tweak the degrees of freedom until I am satisfied with the fit (without using the in-built cv function).
+
+3) I will do an initial crossvalidation with two folds, fit a spline model to the training set and apply it to the test set. Then, I will compute the RMSE's for this. Following this, I will fit a spline model to the *test* set and predict the training set, computing a second RMSE. I will then average these two values.
+
+4) I will then do a crossvalidation with multiple folds (either 5 or 10)?
+
+5) Based on all of these, I will estimate $\sigma$ 
+
+
 # Data 1
 
-```{r, echo=TRUE, warning=FALSE, message=FALSE}
+###Exploratory Data Analysis:
+
+Let's first look at the data:
+
+```{r}
+head(data1) 
+ggplot(data = data1, aes(x=x, y=y)) + geom_point()  + theme(legend.position="none") + labs(title="") 
+ melt(data1) %>% 
+ filter(!variable=="ID") %>% 
+ggplot(aes(x=variable, y=value)) + geom_boxplot()  + theme(legend.position="none") + labs(title="Comparing the spread of x and y in the Dataset") 
+
 ```
+
+###Making a Function:
+
+To make my work easier, I'm going to make one function that will fit the spline model and output the plot and the RMSE of the predictions.
+
+```{r, message=FALSE, warning=FALSE}
+helpful.fn <- function(trainds,testds, df, plotyes = TRUE){ #inputs are training dataset, test dataset, df of spline model
+x<- smooth.spline(trainds$x, trainds$y, df=df) 
+x1<- broom::augment(x) 
+plotx<- x1 %>% 
+  ggplot(aes(x=x)) +
+  geom_point(aes(y=y)) +
+  geom_line(aes(y=.fitted), col="red", size=1);
+predictions <- predict(x,testds$x)
+rmse<-(testds$y - predictions$y )^2%>% 
+  mean() %>% 
+  sqrt()
+if(plotyes){
+return(list(plotx, rmse))
+}
+else{
+  return(rmse)
+}
+}
+helpful.fn(train,test,20,TRUE)
+```
+
+
+
+
+
+```   
+sum(predictions$y$y - testds$y)^2 %>% mean() %>% 
+  sqrt())}
+helpful.fn(train,test,2)
+```
+
+#what are the optimal degrees of freedom i.e. with the lowest rmse
+for(i in 2:50){
+xx[i]<-helpful.fn(train,test,i, FALSE)
+}
+xx
+
+helpful.fn(data1,data1,2,TRUE)
+
+
+Note - this is when we fit the model on the entire dataset and check it's score. To have estimates for out of sample predictions, I will do crossvalidation by splitting the datasets up.
+
+
+###Initial Crossvalidation:
+
+Let's start by dividing the dataset into two (with 50% each).
+
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+set.seed(123)
+indices <- sample(nrow(data1), nrow(data1)/2, replace=FALSE)
+train <- data1[indices,]
+test <- data1[-indices,]
+```
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(train,test,i, FALSE)
+}
+xx;
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+ggplot(data = xx, aes(x=df, y=xx)) + geom_point()  + theme(legend.position="none") + labs(title="", y="RMSE") 
+
+```
+This shows the the RMSE of 
+
+
+
+```{r}
+x<- smooth.spline(train$x, train$y, df=25) 
+ x1<- broom::augment(x) 
+plotx<- x1 %>% 
+  ggplot(aes(x=x)) +
+  geom_point(aes(y=y)) +
+  geom_line(aes(y=.fitted), col="red", size=1)
+
+plotx
+``` 
+
+
+
+
+###Crossvalidation with 5 folds:
+
+Now we can attempt to do crossvalidation with multiple folds to test whether which model reduces the RMSE the most.
+
+```{r}
+split <- list()
+indices <- sample(nrow(data1), nrow(data1), replace=FALSE)
+splits<-split(indices, ceiling(seq_along(indices)/600))
+
+for(i in 1:5){
+t[i]<-
+}
+```
+
+
+###Conclusion:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Data 2
 
-```{r, echo=TRUE, warning=FALSE, message=FALSE}
+For this Data, we will follow the same process.
+
+###Exploratory Data Analysis:
+
+Firstly, let's examine the data look at the data:
+
+```{r, message=FALSE, warning=FALSE}
+head(data2) 
+ggplot(data = data2, aes(x=x, y=y)) + geom_point()  + theme(legend.position="none") + labs(title="") 
+ melt(data2) %>% 
+ filter(!variable=="ID") %>% 
+ggplot(aes(x=variable, y=value)) + geom_boxplot()  + theme(legend.position="none") + labs(title="Comparing the spread of x and y in the Dataset") 
+
 ```
+
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+x<- smooth.spline(data2$x, data2$y, cv=TRUE)
+x2<- broom::augment(x) 
+  ggplot(aes(x=x)) +
+  geom_point(aes(y=y)) +
+  geom_line(aes(y=.fitted), col="red", size=1)
+```
+
+
+
+
+
+
+```{r}
+x<- smooth.spline(train$x, train$y, df=3) 
+ x1<- broom::augment(x) 
+plotx<- x1 %>% 
+  ggplot(aes(x=x)) +
+  geom_point(aes(y=y)) +
+  geom_line(aes(y=.fitted), col="red", size=1)
+x
+plotx
+y2<-predict(x,test$x)
+(test$y-y2$y )^2%>% 
+  mean() %>% 
+  sqrt()
+```
+
+
 
