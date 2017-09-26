@@ -44,9 +44,9 @@ My strategy to approach these datasets will involve the following:
 
 2) I will fit a Spline Model to the entire dataset and tweak the degrees of freedom until I am satisfied with the fit (without using the in-built cv function).
 
-3) I will do an initial crossvalidation with two folds, fit a spline model to the training set and apply it to the test set. Then, I will compute the RMSE's for this. Following this, I will fit a spline model to the *test* set and predict the training set, computing a second RMSE. I will then average these two values.
+3) I will do an initial crossvalidation with two folds, fit a spline model to the training set and apply it to the test set. Then, I will compute the RMSE's for this. Following this, I will fit a spline model to the *test* set and predict the training set, computing a second RMSE. I will then average these two values. This will allow me to see what model to fit to the overall data as this model woul dhave a better out-of-sample validity.
 
-4) I will then do a crossvalidation with multiple folds (either 5 or 10)?
+4) I will then do a crossvalidation with 5 folds. That would entail making five models overall (training on k-1 subsets and testing on the remaining one, and repeating this process 5 times). I will then compute the average of the RMSE's.
 
 5) Based on all of these, I will estimate $\sigma$ 
 
@@ -57,14 +57,16 @@ My strategy to approach these datasets will involve the following:
 
 Let's first look at the data:
 
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
 head(data1) 
-ggplot(data = data1, aes(x=x, y=y)) + geom_point()  + theme(legend.position="none") + labs(title="") 
+ggplot(data = data1, aes(x=x, y=y)) + geom_point()  + theme(legend.position="none") + labs(title="Looking at the Relationship of x and y in Dataset 1") 
  melt(data1) %>% 
  filter(!variable=="ID") %>% 
-ggplot(aes(x=variable, y=value)) + geom_boxplot()  + theme(legend.position="none") + labs(title="Comparing the spread of x and y in the Dataset") 
+ggplot(aes(x=variable, y=value)) + geom_boxplot()  + theme(legend.position="none") + labs(title="Comparing the spread of x and y in Dataset 1") 
 
 ```
+
+There's a moderately weak relationship between the variables. The spread of x is greater than the spread of y. Clearly, a model which has reasonably high flexibility needs to be fit.
 
 ###Making a Function:
 
@@ -89,42 +91,23 @@ else{
   return(rmse)
 }
 }
-helpful.fn(train,test,20,TRUE)
 ```
-
-
-
-
-
-```   
-sum(predictions$y$y - testds$y)^2 %>% mean() %>% 
-  sqrt())}
-helpful.fn(train,test,2)
-```
-
-#what are the optimal degrees of freedom i.e. with the lowest rmse
-for(i in 2:50){
-xx[i]<-helpful.fn(train,test,i, FALSE)
-}
-xx
-
-helpful.fn(data1,data1,2,TRUE)
-
-
-Note - this is when we fit the model on the entire dataset and check it's score. To have estimates for out of sample predictions, I will do crossvalidation by splitting the datasets up.
 
 
 ###Initial Crossvalidation:
 
 Let's start by dividing the dataset into two (with 50% each).
 
-
-```{r, message=FALSE, warning=FALSE, include=FALSE}
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
 set.seed(123)
 indices <- sample(nrow(data1), nrow(data1)/2, replace=FALSE)
 train <- data1[indices,]
 test <- data1[-indices,]
 ```
+
+First, I will fit a model on the training subset, and then apply it to the test set. I will then attempt to find which spline model minimizes the RMSE on the test set. Then, I will reverse the process by finding a model from the test set and applying it to the training one.
+
+
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 xx=0;
 for(i in 2:50){
@@ -135,24 +118,36 @@ xx<-as.data.frame(xx)
 xx<-xx[-1,];
 xx<-as.data.frame(xx)
 xx$df <- seq(from=2,to=50, by=1)
-ggplot(data = xx, aes(x=df, y=xx)) + geom_point()  + theme(legend.position="none") + labs(title="", y="RMSE") 
+ggplot(data = xx, aes(x=df, y=xx)) + geom_point()  + theme(legend.position="none") + labs(title="", y="RMSE")
+
+which.min(xx[,1])
 
 ```
-This shows the the RMSE of 
+
+This shows the the degrees of freedom at which the RMSE of the test set is lowest is 31 with an RMSE of 14.83125 .
+
+Let's Flip now.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+xx2=0;
+for(i in 2:50){
+xx2[i]<-helpful.fn(test,train,i, FALSE)
+}
+xx2;
+xx2<-as.data.frame(xx2)
+xx2<-xx2[-1,];
+xx2<-as.data.frame(xx2)
+xx2$df <- seq(from=2,to=50, by=1)
+ggplot(data = xx2, aes(x=df, y=xx2)) + geom_point()  + theme(legend.position="none") + labs(title="", y="RMSE")
+which.min(xx2[,1])
+```
+This shows the the degrees of freedom at which the RMSE of the test set is lowest is 38 with an RMSE of 15.26564
 
 
+The average of the two RMSE scores is 15.04844.
+I'd probably take a df value of 34 which is midway between the two optimal degrees of freedom values computed above. 
 
-```{r}
-x<- smooth.spline(train$x, train$y, df=25) 
- x1<- broom::augment(x) 
-plotx<- x1 %>% 
-  ggplot(aes(x=x)) +
-  geom_point(aes(y=y)) +
-  geom_line(aes(y=.fitted), col="red", size=1)
-
-plotx
-``` 
-
+Before we choose this model, let's try 5-fold crossvalidation.
 
 
 
@@ -161,88 +156,346 @@ plotx
 Now we can attempt to do crossvalidation with multiple folds to test whether which model reduces the RMSE the most.
 
 ```{r}
-split <- list()
+set.seed(3400)
 indices <- sample(nrow(data1), nrow(data1), replace=FALSE)
 splits<-split(indices, ceiling(seq_along(indices)/600))
-
-for(i in 1:5){
-t[i]<-
-}
+splits<-as.data.frame(splits)
+d1a <- data1[splits$X1,]
+d1b <- data1[splits$X2,]
+d1c <- data1[splits$X3,]
+d1d <- data1[splits$X4,]
+d1e <- data1[splits$X5,]
 ```
 
+Step 1: 
+
+Test on d1a and train on all the rest.
+```{r}
+y<- data1[-splits$X1,]
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(y,d1a,i, FALSE)
+}
+xx
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+which.min(xx[,1])
+```
+Minimum RMSE is 14.96420 df = 34
+
+
+Step 2:
+Test on d1b and train on all the rest.
+
+```{r, echo=FALSE}
+y<- data1[-splits$X2,]
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(y,d1b,i, FALSE)
+}
+xx
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+which.min(xx[,1])
+```
+
+Minimum RMSE is 14.96420. df= 50
+
+Step 3:
+
+Test on d1c and train on all the rest
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+y<- data1[-splits$X3,]
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(y,d1c,i, FALSE)
+}
+xx
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+which.min(xx[,1])
+```
+
+Minimum RMSE is 14.66702. DF = 31
+
+Step 4:
+Test on d1d and train on all the rest
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+y<- data1[-splits$X4,]
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(y,d1d,i, FALSE)
+}
+xx
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+which.min(xx[,1])
+```
+
+Minimum RMSE is 14.55257. df = 50
+
+Step 5:
+Test on d1e and train on all the rest
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+y<- data1[-splits$X5,]
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(y,d1e,i, FALSE)
+}
+xx
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+which.min(xx[,1])
+```
+
+Minimum RMSE is 15.21851. df = 19
+
+The Average RMSE from these five models is : 14.8733
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ (14.55257+ 14.66702 + 14.96420 + 14.96420+ 15.21851)/5
+```
+I'd probably pick the mean of the 5 degrees of freedom for the final model, which is 36.8.
 
 ###Conclusion:
 
 
+The Model I select has 36.8 degrees of freedom. It's visualized below:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+x<- smooth.spline(data1$x, data1$y, df=36.8) 
+ x1<- broom::augment(x) 
+plotx<- x1 %>% 
+  ggplot(aes(x=x)) +
+  geom_point(aes(y=y)) +
+  geom_line(aes(y=.fitted), col="red", size=1)
+plotx
+```
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Since RMSE is the standard deviation of unexplained variance, I estimate that sigma would be around 14.8733.
 
 
 
 
 # Data 2
 
-For this Data, we will follow the same process.
+For this Dataset, we will follow the same process.
 
 ###Exploratory Data Analysis:
 
-Firstly, let's examine the data look at the data:
+Firstly, let's examine the data.
 
 ```{r, message=FALSE, warning=FALSE}
 head(data2) 
-ggplot(data = data2, aes(x=x, y=y)) + geom_point()  + theme(legend.position="none") + labs(title="") 
+ggplot(data = data2, aes(x=x, y=y)) + geom_point()  + theme(legend.position="none") + labs(title="The Relationship between y and x in Dataset 2") 
  melt(data2) %>% 
  filter(!variable=="ID") %>% 
-ggplot(aes(x=variable, y=value)) + geom_boxplot()  + theme(legend.position="none") + labs(title="Comparing the spread of x and y in the Dataset") 
-
+ggplot(aes(x=variable, y=value)) + geom_boxplot()  + theme(legend.position="none") + labs(title="Comparing the spread of x and y in Dataset 2") 
 ```
 
+Y has some extreme outliers in both directions. The relationship seems weak (in linear terms) and definitely needs a flexible model
 
-```{r, echo=TRUE, warning=FALSE, message=FALSE}
-x<- smooth.spline(data2$x, data2$y, cv=TRUE)
-x2<- broom::augment(x) 
-  ggplot(aes(x=x)) +
-  geom_point(aes(y=y)) +
-  geom_line(aes(y=.fitted), col="red", size=1)
+###Initial Crossvalidation:
+
+Let's start by dividing the dataset into two (with 50% each).
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+set.seed(13)
+indices <- sample(nrow(data2), nrow(data2)/2, replace=FALSE)
+train <- data2[indices,]
+test <- data2[-indices,]
 ```
 
+First, I will fit a model on the training subset, and then apply it to the test set. I will then attempt to find which spline model minimizes the RMSE on the test set. Then, I will reverse the process by finding a model from the test set and applying it to the training one.
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(train,test,i, FALSE)
+}
+xx;
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+ggplot(data = xx, aes(x=df, y=xx)) + geom_point()  + theme(legend.position="none") + labs(title="", y="RMSE")
+
+
+which.min(xx[,1])
+```
+
+This shows the the degrees of freedom at which the RMSE of the test set is lowest is 26 with an RMSE of 25.33047.
+
+Let's Flip now.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(test,train,i, FALSE)
+}
+xx;
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+ggplot(data = xx, aes(x=df, y=xx)) + geom_point()  + theme(legend.position="none") + labs(title="", y="RMSE")
+
+which.min(xx[,1])
+```
+This shows the the degrees of freedom at which the RMSE of the test set is lowest is 25  with an RMSE of 24.74778.
+
+The average RMSE from this 2-fold cv is 25.03912.
+Before we choose this model, let's try five-fold crossvalidation.
 
 
 
+###Crossvalidation with 5 folds:
 
+Now we can attempt to do crossvalidation with multiple folds to test whether which model reduces the RMSE the most.
 
 ```{r}
-x<- smooth.spline(train$x, train$y, df=3) 
+set.seed(600)
+indices <- sample(nrow(data2), nrow(data2), replace=FALSE)
+splits<-split(indices, ceiling(seq_along(indices)/600))
+splits<-as.data.frame(splits)
+d2a <- data2[splits$X1,]
+d2b <- data2[splits$X2,]
+d2c <- data2[splits$X3,]
+d2d <- data2[splits$X4,]
+d2e <- data2[splits$X5,]
+```
+
+Step 1: 
+
+Test on d1a and train on all the rest.
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+y<- data2[-splits$X1,]
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(y,d2a,i, FALSE)
+}
+xx
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+which.min(xx[,1])
+```
+Minimum RMSE is 24.19592. df = 28
+
+
+Step 2:
+Test on d1b and train on all the rest.
+
+```{r, echo=FALSE}
+y<- data2[-splits$X2,]
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(y,d2b,i, FALSE)
+}
+xx
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+which.min(xx[,1])
+```
+
+Minimum RMSE is 23.79533 DF = 19
+
+Step 3:
+
+Test on d1c and train on all the rest
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+y<- data2[-splits$X3,]
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(y,d2c,i, FALSE)
+}
+xx
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+which.min(xx[,1])
+```
+
+Minimum RMSE is 24.64746. DF = 27
+
+Step 4:
+Test on d1d and train on all the rest
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+y<- data2[-splits$X4,]
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(y,d2d,i, FALSE)
+}
+xx
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+which.min(xx[,1])
+```
+
+Minimum RMSE is 25.53714. df = 40
+
+Step 5:
+Test on d1e and train on all the rest
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+y<- data2[-splits$X5,]
+xx=0;
+for(i in 2:50){
+xx[i]<-helpful.fn(y,d2e,i, FALSE)
+}
+xx
+xx<-as.data.frame(xx)
+xx<-xx[-1,];
+xx<-as.data.frame(xx)
+xx$df <- seq(from=2,to=50, by=1)
+which.min(xx[,1])
+```
+
+Minimum RMSE is 26.40606. df = 21
+
+The Average RMSE from these five models is : 24.91638.
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ (25.53714+ 24.64746 +23.79533+24.19592 +26.40606) /5
+```
+I'd probably pick the mean of the 5 degrees of freedom for the final model, which is 27
+
+###Conclusion:
+
+The Model I select has 27 degrees of freedom. It's visualized below:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+x<- smooth.spline(data2$x, data2$y, df=27) 
  x1<- broom::augment(x) 
 plotx<- x1 %>% 
   ggplot(aes(x=x)) +
   geom_point(aes(y=y)) +
   geom_line(aes(y=.fitted), col="red", size=1)
-x
 plotx
-y2<-predict(x,test$x)
-(test$y-y2$y )^2%>% 
-  mean() %>% 
-  sqrt()
 ```
 
+Since RMSE is the standard deviation of unexplained variance, I estimate that sigma would be around 24.91638.
 
 
